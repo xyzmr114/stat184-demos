@@ -1,6 +1,11 @@
 # Data Wrangling Demo - STAT 184
 # Demonstrates basic dplyr and tidyr operations
 
+# Install required packages if not already installed
+if (!requireNamespace("dplyr", quietly = TRUE)) install.packages("dplyr")
+if (!requireNamespace("tidyr", quietly = TRUE)) install.packages("tidyr")
+
+
 library(dplyr)
 library(tidyr)
 
