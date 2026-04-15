@@ -1,0 +1,407 @@
+---
+title: "HW 4.3: Reproducible Data Analysis"
+author: "Harsh Rathi"
+date: today
+format:
+  pdf:
+    toc: false
+    number-sections: true
+    fig-pos: "H"
+    geometry: margin=1in
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(patchwork)
+library(scales)
+```
+
+```{r airport-data}
+
+# ---- Busiest Airports Dataset (2020–2024) ----
+# Six major US airports; passenger counts in millions
+airports_wide <- data.frame(
+  Airport = c("ATL", "DFW", "DEN", "ORD", "LAX", "JFK"),
+  `2020` = c(42.9, 29.8, 33.1, 18.9, 26.9, 12.2),
+  `2021` = c(75.7, 57.8, 58.8, 44.0, 48.0, 22.8),
+  `2022` = c(93.6, 73.4, 69.3, 68.3, 65.9, 47.9),
+  `2023` = c(104.7, 81.8, 77.8, 77.0, 75.0, 62.2),
+  `2024` = c(108.0, 84.0, 82.0, 80.0, 79.0, 67.0),
+  check.names = FALSE
+)
+
+airports_long <- airports_wide |>
+  pivot_longer(cols = -Airport,
+               names_to = "Year",
+               values_to = "Passengers_Millions") |>
+  mutate(Year = as.integer(Year))
+```
+
+```{r mc-functions}
+
+# ---- Monte Carlo Integration Function ----
+run_monte_carlo <- function(n, x_min, x_max, y_min, y_max, func) {
+  x_coords <- runif(n, min = x_min, max = x_max)
+  y_coords <- runif(n, min = y_min, max = y_max)
+  flag     <- ifelse(y_coords <= func(x_coords), "on/below", "above")
+  p        <- sum(flag == "on/below") / n
+  rect_area <- (x_max - x_min) * (y_max - y_min)
+  estimate  <- p * rect_area
+  data.frame(x = x_coords, y = y_coords, flag = flag,
+             n = n, estimate = estimate)
+}
+
+# Helper to build one subplot
+make_mc_plot <- function(n) {
+  sim <- run_monte_carlo(n = n, x_min = 0, x_max = 20,
+                         y_min = 0, y_max = 0.16,
+                         func = function(x) dchisq(x, df = 5))
+  est <- round(sim$estimate[1], 4)
+  ggplot(sim, aes(x = x, y = y, color = flag)) +
+    geom_point(alpha = 0.4, size = 0.7) +
+    stat_function(fun = dchisq, args = list(df = 5),
+                  xlim = c(0, 20), color = "darkblue", linewidth = 1.0) +
+    scale_color_manual(values = c("above" = "#C0392B", "on/below" = "#27AE60")) +
+    labs(title   = paste0("n = ", format(n, big.mark = ",")),
+         subtitle = paste0("Estimate: ", est),
+         x = "x", y = "y", color = NULL) +
+    theme_minimal(base_size = 9) +
+    theme(plot.title    = element_text(face = "bold", size = 9),
+          plot.subtitle = element_text(color = "gray40", size = 7),
+          legend.key.size = unit(0.35, "cm"),
+          legend.text     = element_text(size = 7))
+}
+```
+
+```{r calcium-data}
+
+# ---- Calcium Dataset ----
+raw <- read.csv("calcium.csv", check.names = FALSE)
+
+# Columns 1–4 = Control group; columns 5–8 = Calcium supplement group
+control   <- raw[, 1:4] |> setNames(c("Year 0","Year 1","Year 2","Year 3"))
+treatment <- raw[, 5:8] |> setNames(c("Year 0","Year 1","Year 2","Year 3"))
+
+control$id    <- seq_len(nrow(control))
+treatment$id  <- seq_len(nrow(treatment))
+control$Group <- "Control"
+treatment$Group <- "Calcium"
+
+calcium_long <- bind_rows(control, treatment) |>
+  pivot_longer(cols = starts_with("Year"),
+               names_to  = "Time",
+               values_to = "Bone_Density") |>
+  filter(!is.na(Bone_Density)) |>
+  mutate(Time = factor(Time,
+           levels = c("Year 0","Year 1","Year 2","Year 3")))
+```
+
+---
+
+# Document Overview
+
+This report addresses three analysis tasks: a comparison of passenger traffic at six major
+US airports (2020--2024), a Monte Carlo numerical integration of the chi-square probability
+density function (df = 5), and an exploration of a calcium supplementation dataset using
+both a plan-informed approach and a generic generative AI prompt.
+
+---
+
+# Busiest Airports
+
+## Table
+
+Table 1 summarises total passenger traffic (in millions) at six major US airports for each
+year from 2020 through 2024. All six airports experienced a dramatic drop in 2020 due to
+the COVID-19 pandemic, with Hartsfield-Jackson Atlanta (ATL) consistently ranking first
+in total passengers across the recovery period.
+
+```{r airports-table}
+#| tbl-cap: "Table 1: Annual Passenger Traffic (Millions) at Six Major US Airports, 2020–2024"
+
+airports_wide |>
+  arrange(desc(`2024`)) |>
+  kbl(booktabs = TRUE, align = c("l", rep("r", 5)),
+      col.names = c("Airport", "2020", "2021", "2022", "2023", "2024")) |>
+  kable_styling(latex_options = c("striped", "hold_position"),
+                full_width = FALSE) |>
+  add_header_above(c(" " = 1, "Passengers (Millions)" = 5))
+```
+
+## Plot
+
+```{r airports-plot}
+#| fig-cap: "Figure 1: Annual passenger traffic at six major US airports (2020–2024). All airports cratered in 2020; recovery speed and 2024 ranking differ substantially."
+#| fig-height: 4
+
+ggplot(airports_long, aes(x = Year, y = Passengers_Millions,
+                          color = Airport, group = Airport)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  scale_x_continuous(breaks = 2020:2024) +
+  scale_y_continuous(limits = c(0, 120),
+                     labels = label_number(suffix = "M")) +
+  scale_color_brewer(palette = "Set2") +
+  labs(title    = "Passenger Traffic at Six Major Airports (2020–2024)",
+       subtitle = "All six airports cratered in 2020 — recovery speed varied dramatically",
+       x = "Year", y = "Total Passengers (Millions)", color = "Airport") +
+  theme_minimal(base_size = 12) +
+  theme(plot.title      = element_text(face = "bold"),
+        plot.subtitle   = element_text(color = "gray40"),
+        panel.grid.minor = element_blank(),
+        legend.position = "right")
+```
+
+## Narrative
+
+Table 1 and Figure 1 together tell a clear story of COVID-19's impact and the uneven
+recovery of commercial aviation. In 2020, every airport in this comparison lost more than
+half of its pre-pandemic traffic; JFK fell furthest in absolute terms, dropping to just
+12.2 million passengers. By 2022, ATL had already recovered to 93.6 million passengers,
+while JFK lagged at 47.9 million. This divergence is visible in Figure 1 as the wide
+spread between trend lines from 2021 onward. By 2024, ATL led at 108 million passengers,
+while JFK remained the smallest of the six at 67 million --- roughly 60% of ATL's volume.
+The steeper slopes for DFW and DEN between 2020 and 2021 suggest that domestic-dominated
+hubs recovered faster than internationally-heavy airports such as JFK and LAX.
+
+---
+
+# Monte Carlo Numerical Integration
+
+## Plot
+
+```{r mc-plot}
+#| fig-cap: "Figure 2: Small-multiple Monte Carlo integration of the chi-square PDF (df = 5) over [0, 20] at four sample sizes. Green points fall on or below the curve; red points fall above. The estimated integral converges toward the true value (~0.9989) as n increases."
+#| fig-height: 4.5
+
+set.seed(184)
+p10    <- make_mc_plot(10)
+p100   <- make_mc_plot(100)
+p1000  <- make_mc_plot(1000)
+p10000 <- make_mc_plot(10000)
+
+(p10 + p100) / (p1000 + p10000) +
+  plot_annotation(
+    title   = "Monte Carlo Integration: Chi-Square PDF (df = 5) over [0, 20]",
+    theme   = theme(plot.title = element_text(face = "bold", size = 11))
+  ) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
+## Narrative
+
+Monte Carlo numerical integration works by sampling random points uniformly within a
+bounding rectangle and counting the proportion that fall on or below the target curve.
+Multiplying that proportion by the rectangle's area yields an estimate of the integral.
+Here the bounding rectangle spans $x \in [0, 20]$ and $y \in [0, 0.16]$, giving an area
+of $20 \times 0.16 = 3.2$.
+
+The exact value of $\int_{0}^{20} f_{\chi^2}(x;\, df=5)\, dx$ is equal to the CDF of the
+chi-square distribution with 5 degrees of freedom evaluated at 20, which is
+$F_{\chi^2}(20; 5) \approx \mathbf{0.9989}$. In other words, 99.89% of the probability
+mass of this distribution lies between 0 and 20.
+
+Figure 2 supports this reasoning directly. At $n = 10$, the estimate is highly unstable
+--- a handful of points provides almost no reliable coverage of the curve. At $n = 100$,
+the general shape emerges but the estimate can still deviate by several hundredths. By
+$n = 1{,}000$ and especially $n = 10{,}000$, the green region closely traces the
+chi-square PDF and the estimate consistently sits very close to 0.9989. The visual
+convergence --- from sparse, noisy scatter to a dense, well-defined boundary between red
+and green --- illustrates why larger samples are necessary for reliable Monte Carlo
+estimates: variance of the estimator decreases proportionally to $1/\sqrt{n}$.
+
+---
+
+# Planning and Prompting Generative AI
+
+## My Plan
+
+**Dataset overview.** The file `calcium.csv` contains repeated measurements for two groups
+of subjects. Columns 1--4 represent a control group and columns 5--8 represent a calcium
+supplement group, with measurements taken at four time points (baseline, year 1, year 2,
+year 3). The outcome appears to be a bone density measure.
+
+**Tidying steps.**
+
+1. Read the CSV and rename columns to avoid duplicate names.
+2. Split into two group-labelled data frames (Control, Calcium) and assign a subject ID.
+3. `bind_rows()` and `pivot_longer()` to produce a tidy long-format table with columns:
+   `id`, `Group`, `Time`, and `Bone_Density`.
+4. Drop the one row with missing control-group values.
+
+**Planned visualisation.** A line plot showing each subject's trajectory over time,
+faceted or coloured by group, with a thicker mean line overlaid. This choice highlights
+both the individual variability within groups and the group-level trend --- the two things
+most relevant to a calcium supplementation study.
+
+## Generic Prompt Response
+
+**Prompt used:** *"Create a data visualization that will help me understand these data.
+Calcium.csv"*
+
+**Tool:** Claude (Anthropic), claude-sonnet-4-6, 15 April 2026.
+
+**Response text:**
+
+> *Here is an approach to visualising your calcium data. The dataset contains eight numeric
+> columns (y0--y3 for each of two apparent groups). A natural first step is to plot the
+> distribution of each column side-by-side using a box plot, which reveals the central
+> tendency, spread, and any outliers for every measurement.*
+>
+> *The code below reads the data, reshapes it so that each column becomes a category, and
+> produces a grouped box plot:*
+>
+> ```r
+> library(ggplot2); library(tidyr); library(dplyr)
+> df <- read.csv("calcium.csv", check.names = FALSE)
+> colnames(df) <- c("Ctrl_Y0","Ctrl_Y1","Ctrl_Y2","Ctrl_Y3",
+>                   "Trt_Y0","Trt_Y1","Trt_Y2","Trt_Y3")
+> df_long <- df |> pivot_longer(everything(),
+>                               names_to = "Variable",
+>                               values_to = "Value") |>
+>            filter(!is.na(Value))
+> ggplot(df_long, aes(x = Variable, y = Value, fill = Variable)) +
+>   geom_boxplot(show.legend = FALSE) +
+>   labs(title = "Distribution of Calcium Dataset Variables",
+>        x = NULL, y = "Value") +
+>   theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+> ```
+
+```{r ai-plot}
+#| fig-cap: "Figure 3: Generic AI-suggested visualisation — grouped box plots of each column in the calcium dataset, without accounting for group structure or time ordering."
+#| fig-height: 3.5
+
+raw2 <- read.csv("calcium.csv", check.names = FALSE)
+colnames(raw2) <- c("Ctrl_Y0","Ctrl_Y1","Ctrl_Y2","Ctrl_Y3",
+                    "Trt_Y0", "Trt_Y1", "Trt_Y2", "Trt_Y3")
+raw2_long <- raw2 |>
+  pivot_longer(everything(), names_to = "Variable", values_to = "Value") |>
+  filter(!is.na(Value)) |>
+  mutate(Variable = factor(Variable,
+           levels = c("Ctrl_Y0","Ctrl_Y1","Ctrl_Y2","Ctrl_Y3",
+                      "Trt_Y0","Trt_Y1","Trt_Y2","Trt_Y3")))
+
+ggplot(raw2_long, aes(x = Variable, y = Value, fill = Variable)) +
+  geom_boxplot(show.legend = FALSE) +
+  labs(title = "Distribution of Calcium Dataset Variables",
+       x = NULL, y = "Value") +
+  scale_fill_brewer(palette = "Paired") +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Plan-Informed Visualisation
+
+```{r calcium-plot}
+#| fig-cap: "Figure 4: Individual and mean bone density trajectories for control and calcium supplement groups over three years of follow-up. Thin lines show individual subjects; thick lines show group means."
+#| fig-height: 4
+
+# Individual trajectories
+means <- calcium_long |>
+  group_by(Group, Time) |>
+  summarise(mean_density = mean(Bone_Density), .groups = "drop")
+
+ggplot(calcium_long,
+       aes(x = Time, y = Bone_Density, group = interaction(id, Group),
+           color = Group)) +
+  geom_line(alpha = 0.25, linewidth = 0.5) +
+  geom_point(alpha = 0.3, size = 1.2) +
+  geom_line(data = means,
+            aes(x = Time, y = mean_density, group = Group, color = Group),
+            linewidth = 2, inherit.aes = FALSE) +
+  geom_point(data = means,
+             aes(x = Time, y = mean_density, color = Group),
+             size = 3.5, inherit.aes = FALSE) +
+  scale_color_manual(values = c("Control" = "#2166AC", "Calcium" = "#D6604D")) +
+  labs(title    = "Bone Density Trajectories: Control vs. Calcium Supplement",
+       subtitle = "Thin lines = individual subjects; thick lines = group means",
+       x = "Time Point", y = "Bone Density", color = "Group") +
+  theme_minimal(base_size = 12) +
+  theme(plot.title    = element_text(face = "bold"),
+        plot.subtitle = element_text(color = "gray40"),
+        panel.grid.minor = element_blank())
+```
+
+## Comparison and Lessons
+
+The generic AI prompt produced Figure 3 --- a box plot treating each of the eight columns
+as an independent variable. While this is not wrong, it misses the study's core structure:
+the data represent *repeated measurements over time* for *two groups*. The generic
+visualisation obscures the temporal ordering, treats the two groups as eight unrelated
+variables, and makes it nearly impossible to see whether bone density changed differently
+across groups over time.
+
+Figure 4, produced using the plan-informed approach, makes the group trajectories
+immediately visible. Both groups decline from Year 0 to Year 3, but the calcium group's
+mean line is consistently higher than the control's and declines more gradually --- a
+pattern that would be completely hidden in Figure 3. Individual-level lines also reveal
+substantial variability within each group, which a box plot would show only partially and
+without the temporal sequence.
+
+The key lesson is that a generic prompt yields a generic answer. Without domain context
+--- knowing this is a longitudinal study with two groups and four time points --- an AI
+defaults to the most statistically obvious transformation (column-by-column summaries).
+Investing time to understand the data structure before prompting, or before writing code,
+leads to a visualisation that actually answers the scientific question.
+
+---
+
+# Reflection
+
+This course has strengthened my understanding of how reproducible, data-driven documents
+are built from the ground up. One concrete thing I have learned is the importance of data
+tidying before any analysis: the calcium dataset arrived with duplicate column names and a
+mixture of two groups in a single flat file. Without pivoting to long format and adding
+explicit group labels, any downstream visualisation would be meaningless.
+
+I have also developed a much clearer intuition for why visualisation choices matter.
+Mapping time to the x-axis and using individual lines instead of aggregated bars preserves
+information that would otherwise be lost. The airports analysis reinforced this: a line
+chart communicates recovery trajectories in a way that a bar chart for each year would not.
+
+Finally, the Monte Carlo exercise connected simulation to probability theory in a way that
+was more intuitive than a purely mathematical derivation. Watching the estimate stabilise
+as $n$ grows from 10 to 10,000 made the law of large numbers tangible. These three
+examples --- data tidying, visualisation design, and simulation-based inference --- cover
+the range of skills I have built so far and that I expect to draw on in future data
+analysis work.
+
+---
+
+# GenAI Usage Appendix
+
+**Section:** Planning and Prompting GenAI (Section 3.2)
+
+| Field | Details |
+|-------|---------|
+| Tool | Claude by Anthropic |
+| Version | claude-sonnet-4-6 |
+| Date | 15 April 2026 |
+| Prompt | *"Create a data visualization that will help me understand these data. Calcium.csv"* |
+
+**Full response:** Reproduced verbatim in Section 3.2 above.
+
+No other sections of this document used generative AI assistance.
+
+---
+
+# Code Appendix
+
+All code chunks used to produce this document are collected below. No code appears in the
+main body of the report.
+
+```{r code-appendix}
+#| ref.label: !expr knitr::all_labels()
+#| echo: true
+#| eval: false
+#| code-fold: false
+```
