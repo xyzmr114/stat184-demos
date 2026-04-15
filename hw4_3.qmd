@@ -15,6 +15,7 @@ execute:
 ---
 
 ```{r setup}
+# Coding style: Tidyverse Style Guide (https://style.tidyverse.org/)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
@@ -140,6 +141,7 @@ airports_wide |>
 
 ```{r airports-plot}
 #| fig-cap: "Figure 1: Annual passenger traffic at six major US airports (2020–2024). All airports cratered in 2020; recovery speed and 2024 ranking differ substantially."
+#| fig-alt: "Line chart with six colored lines, one per airport (ATL, DFW, DEN, ORD, LAX, JFK), showing passenger counts in millions from 2020 to 2024. All lines drop sharply in 2020 then rise, with ATL highest at 108M by 2024 and JFK lowest at 67M."
 #| fig-height: 4
 
 ggplot(airports_long, aes(x = Year, y = Passengers_Millions,
@@ -180,6 +182,7 @@ hubs recovered faster than internationally-heavy airports such as JFK and LAX.
 
 ```{r mc-plot}
 #| fig-cap: "Figure 2: Small-multiple Monte Carlo integration of the chi-square PDF (df = 5) over [0, 20] at four sample sizes. Green points fall on or below the curve; red points fall above. The estimated integral converges toward the true value (~0.9989) as n increases."
+#| fig-alt: "A 2-by-2 grid of scatter plots. Each panel shows random points colored red (above curve) or green (on/below curve) overlaid with a dark blue chi-square density curve. Panels are labeled n=10, n=100, n=1000, and n=10000; the green region becomes a more precise trace of the curve as n increases."
 #| fig-height: 4.5
 
 set.seed(184)
@@ -278,6 +281,7 @@ Calcium.csv"*
 
 ```{r ai-plot}
 #| fig-cap: "Figure 3: Generic AI-suggested visualisation — grouped box plots of each column in the calcium dataset, without accounting for group structure or time ordering."
+#| fig-alt: "Eight side-by-side box plots, one for each column of the calcium dataset (Ctrl_Y0 through Ctrl_Y3 and Trt_Y0 through Trt_Y3), showing the distribution of bone density values. The boxes are colored by variable with no grouping structure communicated."
 #| fig-height: 3.5
 
 raw2 <- read.csv("calcium.csv", check.names = FALSE)
@@ -303,6 +307,7 @@ ggplot(raw2_long, aes(x = Variable, y = Value, fill = Variable)) +
 
 ```{r calcium-plot}
 #| fig-cap: "Figure 4: Individual and mean bone density trajectories for control and calcium supplement groups over three years of follow-up. Thin lines show individual subjects; thick lines show group means."
+#| fig-alt: "Line chart with two colors (blue for Control, red for Calcium). Many faint thin lines show individual subject trajectories declining from Year 0 to Year 3. Two thick lines show group means; the Calcium mean is consistently higher and declines less steeply than the Control mean."
 #| fig-height: 4
 
 # Individual trajectories
